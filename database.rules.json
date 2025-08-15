@@ -1,0 +1,75 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      "$uid": {
+        // A user can only write to their own profile.
+        ".write": "auth != null && auth.uid === $uid",
+        // A user can read their own full profile.
+        ".read": "auth != null && auth.uid === $uid",
+
+        // Allow reading of non-sensitive fields by any authenticated user for profiles/chat lists.
+        "fullname": { ".read": "auth != null" },
+        "profilePicture": { ".read": "auth != null" }
+      },
+      // On creation, validate that the essential fields exist and are of the correct type.
+      ".validate": "newData.hasChildren(['fullname', 'email', 'phone']) && newData.child('fullname').isString() && newData.child('email').isString() && newData.child('phone').isString()"
+    },
+
+    "status": {
+      "$uid": {
+        // Any authenticated user can read anyone's status.
+        ".read": "auth != null",
+        // A user can only write to their own status.
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren(['state', 'last_changed'])"
+      }
+    },
+
+    "typing_status": {
+      "$chatId": {
+        // You can only read/write typing status if you are a participant of the chat.
+        ".read": "root.child('chats/' + $chatId + '/participants/' + auth.uid).exists()",
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && root.child('chats/' + $chatId + '/participants/' + auth.uid).exists()"
+        }
+      }
+    },
+
+    "chats": {
+      "$chatId": {
+        // Allow read/write access only to participants of the chat.
+        // For new chats, ensure the creator is a participant.
+        ".read": "data.child('participants').child(auth.uid).exists()",
+        ".write": "(data.child('participants').child(auth.uid).exists()) || (!data.exists() && newData.child('participants').child(auth.uid).exists())",
+
+        "lastRead": {
+          "$uid": {
+            // A user can only update their own lastRead timestamp.
+            ".write": "auth != null && auth.uid === $uid"
+          }
+        },
+        "messages": {
+          ".indexOn": "timestamp", // For ordering messages
+          "$messageId": {
+            // Validate that the senderId of a new message is the authenticated user.
+            ".validate": "newData.hasChildren(['senderId', 'timestamp']) && newData.child('senderId').val() === auth.uid"
+          }
+        }
+      }
+    },
+
+    "calls": {
+      ".indexOn": "timestamp",
+      "$callId": {
+        // You can read a call if you are the caller or receiver.
+        ".read": "auth != null && (data.child('callerId').val() === auth.uid || data.child('receiverId').val() === auth.uid)",
+        // You can only create a call where you are the caller.
+        ".write": "!data.exists() && newData.child('callerId').val() === auth.uid",
+        ".validate": "newData.hasChildren(['callerId', 'receiverId', 'timestamp', 'type', 'status'])"
+      }
+    }
+  }
+}
